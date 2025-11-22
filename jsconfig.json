@@ -1,7 +1,12 @@
 {
+  "$schema": "https://json.schemastore.org/jsconfig",
   "compilerOptions": {
+    "baseUrl": "src",
     "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
+      "@/*": ["*"]
+    },
+    "target": "es6",
+    "lib": ["es6", "dom"]
+  },
+  "include": ["src"]
 }
