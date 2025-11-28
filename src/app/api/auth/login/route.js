@@ -1,4 +1,4 @@
-import { query } from "@/helpers/dbconnection";
+import { query } from '@/helpers/dbconnection';
 import bcrypt from "bcrypt";
 
 export async function POST(request) {
@@ -10,7 +10,7 @@ export async function POST(request) {
       return new Response(JSON.stringify({ success: false, message: "Email and password required" }), { status: 400 });
     }
 
-    const users = await query("SELECT id, password FROM users WHERE email = ?", [email]);
+    const users = await query("SELECT id, email, password FROM users WHERE email = ?", [email]);
     if (users.length === 0) {
       return new Response(JSON.stringify({ success: false, message: "Invalid email or password" }), { status: 400 });
     }
@@ -21,7 +21,15 @@ export async function POST(request) {
       return new Response(JSON.stringify({ success: false, message: "Invalid email or password" }), { status: 400 });
     }
 
-    return new Response(JSON.stringify({ success: true, message: "Login successful" }), { status: 200 });
+    // Return user data including ID
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: "Login successful",
+      user: {
+        id: user.id,
+        email: user.email
+      }
+    }), { status: 200 });
   } catch (err) {
     console.error(err);
     return new Response(JSON.stringify({ success: false, message: "Server error" }), { status: 500 });

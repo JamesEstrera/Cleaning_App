@@ -1,25 +1,41 @@
 'use client';
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import axios from "axios";
+import { submitFeedback } from "@/utils/api";
 
 export default function FeedbackPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
-    name: '',
+    name: "",
     rating: 0,
-    category: '',
-    message: '',
+    category: "",
+    message: "",
   });
-
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [userId, setUserId] = useState(null);
+
+  useEffect(() => {
+    const auth =
+      typeof window !== "undefined" && localStorage.getItem("isAuthenticated") === "true";
+    const storedUserId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+
+    if (!auth || !storedUserId) {
+      router.replace("/login");
+      return;
+    }
+
+    setUserId(storedUserId);
+  }, [router]);
 
   const handleSignOut = () => {
     localStorage.removeItem("isAuthenticated");
     localStorage.removeItem("profileData");
-    localStorage.removeItem("user_id");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("userEmail");
     router.push("/login");
   };
 
@@ -42,33 +58,38 @@ export default function FeedbackPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.name || !formData.rating || !formData.category || !formData.message) {
-      alert("Please fill in all fields");
+    if (!userId) {
+      alert("Please log in before submitting feedback.");
+      router.push("/login");
       return;
     }
 
-    try {
-      const res = await fetch("/api/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.name,
-          rating: formData.rating,
-          category: formData.category,
-          feedback: formData.message
-        }),
-      });
+    setIsSubmitting(true);
+    setSubmitSuccess(false);
 
-      const data = await res.json();
-      if (data.success) {
-        alert("Feedback submitted successfully!");
+    try {
+      const payload = {
+        user_id: parseInt(userId, 10),
+        rating: formData.rating,
+        category: formData.category,
+        feedback: formData.name
+          ? `${formData.name}: ${formData.message}`
+          : formData.message,
+      };
+
+      const data = await submitFeedback(payload);
+
+      if (data?.success) {
+        setSubmitSuccess(true);
         setFormData({ name: "", rating: 0, category: "", message: "" });
       } else {
-        alert("Failed to submit feedback: " + data.error);
+        alert("Failed to submit feedback. Please try again.");
       }
     } catch (err) {
       console.error(err);
       alert("An error occurred while submitting feedback.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

@@ -1,126 +1,98 @@
-// /app/utils/api.js
+import axios from "axios";
 
-// Register User
-export async function registerUser({ email, password }) {
-  const res = await fetch("/api/auth/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  return res.json();
+const apiClient = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "",
+});
+
+function handleError(error) {
+  if (error.response?.data) {
+    throw error.response.data;
+  }
+  throw { success: false, message: error.message || "Request failed" };
 }
 
-// Login User
-export async function loginUser({ email, password }) {
-  const res = await fetch("/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  return res.json();
-}
-
-
-// Helper to safely parse JSON
-async function safeJson(res) {
+export async function registerUser(payload) {
   try {
-    return await res.json();
-  } catch (err) {
-    console.error("Failed to parse JSON:", err, await res.text());
-    return null;
+    const { data } = await apiClient.post("/api/auth/register", payload);
+    return data;
+  } catch (error) {
+    handleError(error);
   }
 }
 
-// Get user profile by ID
+export async function loginUser(payload) {
+  try {
+    const { data } = await apiClient.post("/api/auth/login", payload);
+    return data;
+  } catch (error) {
+    handleError(error);
+  }
+}
+
 export async function getUserProfile(userId) {
   if (!userId) return null;
-
   try {
-    const res = await fetch(`/api/user?user_id=${userId}`);
-    if (!res.ok) {
-      console.error("Failed to fetch user profile:", res.status);
-      return null;
-    }
-    const data = await safeJson(res);
-    return data; // expects { success: true, user: { full_name, phone, address, profile_image } }
-  } catch (err) {
-    console.error("Error fetching user profile:", err);
-    return null;
-  }
-}
-
-// Update user profile
-export async function updateUserProfile(userId, profileData) {
-  if (!userId) return null;
-
-  try {
-    const res = await fetch("/api/user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, ...profileData }),
+    const { data } = await apiClient.get("/api/profile", {
+      params: { user_id: userId },
     });
-    if (!res.ok) {
-      console.error("Failed to update profile:", res.status);
-      return null;
-    }
-    const data = await safeJson(res);
-    return data; // expects { success: true }
-  } catch (err) {
-    console.error("Error updating user profile:", err);
-    return null;
+    return data;
+  } catch (error) {
+    handleError(error);
   }
 }
 
-// Get bookings for a user
+export async function updateUserProfile(formData) {
+  try {
+    const { data } = await apiClient.post("/api/profile", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data;
+  } catch (error) {
+    handleError(error);
+  }
+}
+
 export async function getUserBookings(userId) {
   if (!userId) return [];
-
   try {
-    const res = await fetch(`/api/booking?user_id=${userId}`);
-    if (!res.ok) {
-      console.error("Failed to fetch bookings:", res.status);
-      return [];
-    }
-    const data = await safeJson(res);
-    if (!Array.isArray(data)) return [];
-    return data;
-  } catch (err) {
-    console.error("Error fetching bookings:", err);
-    return [];
+    const { data } = await apiClient.get("/api/booking", {
+      params: { user_id: userId },
+    });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    handleError(error);
   }
 }
 
+export async function createBooking(payload) {
+  try {
+    const isFormData =
+      typeof FormData !== "undefined" && payload instanceof FormData;
+    const config = isFormData
+      ? { headers: { "Content-Type": "multipart/form-data" } }
+      : undefined;
 
-// Create a new booking
-export async function createBooking(data) {
-  // data should include: user_id, service, date, time, price, notes
-  const res = await fetch("/api/booking", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-
-  const result = await res.json();
-  return result;
+    const { data } = await apiClient.post("/api/booking", payload, config);
+    return data;
+  } catch (error) {
+    handleError(error);
+  }
 }
 
-
-// Submit Feedback
-export async function submitFeedback(data) {
-  const res = await fetch("/api/feedback", {
-    method: "POST",
-    body: JSON.stringify(data),
-    headers: { "Content-Type": "application/json" }
-  });
-  return res.json();
+export async function submitFeedback(payload) {
+  try {
+    const { data } = await apiClient.post("/api/feedback", payload);
+    return data;
+  } catch (error) {
+    handleError(error);
+  }
 }
 
-// Get Feedback
 export async function getFeedback() {
-  const res = await fetch("/api/feedback");
-  return res.json();
+  try {
+    const { data } = await apiClient.get("/api/feedback");
+    return data;
+  } catch (error) {
+    handleError(error);
+  }
 }
-
-
-
-

@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { getUserProfile, getUserBookings } from "@/utils/api";
+import { getUserProfile, getUserBookings, updateUserProfile } from "@/utils/api";
 
 export default function ProfilePage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userId, setUserId] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [errors, setErrors] = useState({});
   const [bookingHistory, setBookingHistory] = useState([]);
@@ -16,38 +17,41 @@ export default function ProfilePage() {
   const [profileImage, setProfileImage] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState(null);
 
-  const userId = typeof window !== "undefined" ? localStorage.getItem("user_id") : null;
-
-  // --------------------------
-  // Check authentication
-  // --------------------------
   useEffect(() => {
-    const auth = typeof window !== "undefined" && localStorage.getItem("isAuthenticated") === "true";
+    const auth =
+      typeof window !== "undefined" && localStorage.getItem("isAuthenticated") === "true";
+    const storedUserId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+
     setIsAuthenticated(auth);
+    setUserId(storedUserId);
     setAuthChecked(true);
-    if (!auth) router.replace("/login");
+
+    if (!auth) {
+      router.replace("/login");
+    }
   }, [router]);
 
-  // --------------------------
-  // Load profile from localStorage
-  // --------------------------
+  // Load cached profile to prevent UI flash
   useEffect(() => {
+    if (typeof window === "undefined") return;
     const saved = localStorage.getItem("profileData");
-    if (saved) {
+    if (!saved) return;
+
+    try {
       const profile = JSON.parse(saved);
       setFormData({
         name: profile.name || "",
         phone: profile.phone || "",
         address: profile.address || "",
       });
-      if (profile.profile_image) setProfileImagePreview(profile.profile_image);
-      if (profile.user_id) localStorage.setItem("user_id", profile.user_id);
+      if (profile.profile_image) {
+        setProfileImagePreview(profile.profile_image);
+      }
+    } catch (error) {
+      console.warn("Failed to parse cached profile:", error);
     }
   }, []);
 
-  // --------------------------
-  // Fetch profile + bookings from API
-  // --------------------------
   useEffect(() => {
     if (!userId) return;
 
@@ -56,17 +60,21 @@ export default function ProfilePage() {
         const profileRes = await getUserProfile(userId);
         if (profileRes?.success && profileRes.user) {
           const profile = profileRes.user;
+
+          localStorage.setItem("userId", profile.id);
+          if (profile.email) {
+            localStorage.setItem("userEmail", profile.email);
+          }
           localStorage.setItem(
             "profileData",
             JSON.stringify({
-              user_id: profile.id,
+              userId: profile.id,
               name: profile.full_name || "",
               phone: profile.phone || "",
               address: profile.address || "",
               profile_image: profile.profile_image || "",
             })
           );
-          localStorage.setItem("user_id", profile.id);
 
           setFormData({
             name: profile.full_name || "",
@@ -74,20 +82,22 @@ export default function ProfilePage() {
             address: profile.address || "",
           });
 
-          if (profile.profile_image) setProfileImagePreview(profile.profile_image);
+          setProfileImagePreview(profile.profile_image || null);
         }
 
         const bookingsRes = await getUserBookings(userId);
         if (Array.isArray(bookingsRes)) {
-          setBookingHistory(bookingsRes.map(b => ({
-            id: b.id,
-            service: b.service,
-            date: b.date,
-            time: b.time,
-            price: b.price,
-            notes: b.notes,
-            status: b.status || "Pending",
-          })));
+          setBookingHistory(
+            bookingsRes.map((booking) => ({
+              id: booking.id,
+              service: booking.service,
+              date: booking.date,
+              time: booking.time,
+              notes: booking.additional_notes || "",
+              createdAt: booking.created_at,
+              documents: booking.documents || [],
+            }))
+          );
         }
       } catch (err) {
         console.error("Failed to fetch profile or bookings:", err);
@@ -105,7 +115,8 @@ export default function ProfilePage() {
   const handleSignOut = () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("isAuthenticated");
-      localStorage.removeItem("user_id");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("userEmail");
       localStorage.removeItem("profileData");
       router.push("/login");
     }
@@ -139,6 +150,11 @@ export default function ProfilePage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
+    if (!userId) {
+      alert("User session expired. Please log in again.");
+      router.push("/login");
+      return;
+    }
 
     try {
       const formDataToSend = new FormData();
@@ -146,31 +162,33 @@ export default function ProfilePage() {
       formDataToSend.append("name", formData.name);
       formDataToSend.append("phone", formData.phone);
       formDataToSend.append("address", formData.address);
-      if (profileImage) formDataToSend.append("profile_image", profileImage);
-
-      const res = await fetch("/api/profile", { method: "POST", body: formDataToSend });
-      const data = await res.json();
-
-      if (data.success) {
-        localStorage.setItem(
-          "profileData",
-          JSON.stringify({
-            user_id: userId,
-            name: formData.name,
-            phone: formData.phone,
-            address: formData.address,
-            profile_image: data.profile_image || profileImagePreview || null,
-          })
-        );
-        alert("Profile updated successfully!");
-        if (data.profile_image) setProfileImagePreview(data.profile_image);
-        setIsEditing(false);
-      } else {
-        alert("Failed to update profile: " + data.error);
+      if (profileImage) {
+        formDataToSend.append("profile_image", profileImage);
       }
+
+      const data = await updateUserProfile(formDataToSend);
+
+      if (data?.success && data.profile_image !== undefined) {
+        setProfileImagePreview(data.profile_image || profileImagePreview);
+      }
+
+      localStorage.setItem(
+        "profileData",
+        JSON.stringify({
+          userId,
+          name: formData.name,
+          phone: formData.phone,
+          address: formData.address,
+          profile_image: data?.profile_image || profileImagePreview || null,
+        })
+      );
+
+      alert("Profile updated successfully!");
+      setIsEditing(false);
+      setProfileImage(null);
     } catch (err) {
       console.error("Submit error:", err);
-      alert("Failed to update profile: " + err.message);
+      alert("Failed to update profile: " + (err?.message || "Server error"));
     }
   };
 
@@ -278,17 +296,43 @@ export default function ProfilePage() {
               <p className="text-gray-500">No bookings yet.</p>
             ) : (
               <ul className="space-y-4">
-                {bookingHistory.map(booking => (
+            {bookingHistory.map(booking => (
                   <li key={booking.id} className="border p-4 rounded-lg hover:shadow-md transition">
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-semibold">{booking.service}</span>
-                      <span className={`text-sm font-medium ${booking.status === "Completed" ? "text-green-600" : booking.status === "Pending" ? "text-yellow-600" : "text-blue-600"}`}>
-                        {booking.status}
-                      </span>
+                  <span className="text-sm font-medium text-blue-600">Scheduled</span>
                     </div>
-                    <div className="text-sm text-gray-500">{booking.date} at {booking.time}</div>
-                    <div className="text-sm text-gray-500">{booking.notes}</div>
-                    <div className="text-sm font-semibold mt-1">{booking.price}</div>
+                <div className="text-sm text-gray-500">
+                  {booking.date} at {booking.time}
+                </div>
+                {booking.notes && (
+                  <div className="text-sm text-gray-500 mt-1 whitespace-pre-line">
+                    {booking.notes}
+                  </div>
+                )}
+                {booking.documents && booking.documents.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs text-gray-500 mb-1">Attachments</div>
+                    <div className="flex flex-wrap gap-2">
+                      {booking.documents.map((doc, index) => (
+                        <a
+                          key={`${booking.id}-doc-${index}`}
+                          href={doc}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded"
+                        >
+                          Document {index + 1}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {booking.createdAt && (
+                  <div className="text-xs text-gray-400 mt-2">
+                    Created: {new Date(booking.createdAt).toLocaleString()}
+                  </div>
+                )}
                   </li>
                 ))}
               </ul>

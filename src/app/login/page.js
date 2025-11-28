@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e) => {
@@ -19,21 +20,37 @@ export default function LoginPage() {
       return;
     }
 
+    setIsLoading(true);
+    setError('');
+
     try {
       const response = await axios.post('/api/auth/login', { email, password });
+      
       if (response.data.success) {
-        if (rememberMe) {
-          localStorage.setItem('userEmail', email);
-        } else {
-          localStorage.removeItem('userEmail');
-        }
+        // Store user information in localStorage
         localStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('userId', response.data.user.id);
+        localStorage.setItem('userEmail', response.data.user.email);
+        
+        if (rememberMe) {
+          localStorage.setItem('rememberMe', 'true');
+        } else {
+          localStorage.removeItem('rememberMe');
+        }
+        
         router.push('/dashboard');
       } else {
         setError(response.data.message);
       }
     } catch (err) {
-      setError('Login failed. Please try again.');
+      console.error('Login error:', err);
+      if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else {
+        setError('Login failed. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -93,19 +110,24 @@ export default function LoginPage() {
             <Link href="/forgot" className="text-sm text-blue-600 hover:underline">Forgot password?</Link>
           </div>
 
-          {error && <div className="text-red-500 text-sm text-center">{error}</div>}
+          {error && (
+            <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg">
+              {error}
+            </div>
+          )}
 
           <div>
             <button
               type="submit"
-              className="w-full py-3 px-4 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700"
+              disabled={isLoading}
+              className="w-full py-3 px-4 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Log in
+              {isLoading ? 'Logging in...' : 'Log in'}
             </button>
           </div>
 
           <p className="text-center text-sm text-gray-600">
-            Don't have an account? <Link href="/sign_up" className="text-blue-600 hover:underline">Sign up</Link>
+            {"Don't have an account?"} <Link href="/sign_up" className="text-blue-600 hover:underline">Sign up</Link>
           </p>
         </form>
       </div>

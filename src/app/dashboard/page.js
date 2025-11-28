@@ -48,6 +48,9 @@ export default function Home() {
 
   const handleSignOut = () => {
     localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('profileData');
     router.push('/login');
   };
 

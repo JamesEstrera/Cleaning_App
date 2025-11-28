@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
+import { createBooking } from '@/utils/api';
 
 export default function BookingPage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedService, setSelectedService] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -17,11 +17,19 @@ export default function BookingPage() {
   const [documents, setDocuments] = useState([]);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [userId, setUserId] = useState(null);
+  const [userEmail, setUserEmail] = useState('');
 
   useEffect(() => {
     const auth = typeof window !== 'undefined' && localStorage.getItem('isAuthenticated') === 'true';
+    const storedUserId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+    const storedUserEmail = typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null;
+    
     setIsAuthenticated(auth);
+    setUserId(storedUserId);
+    setUserEmail(storedUserEmail);
     setAuthChecked(true);
+    
     if (!auth) {
       router.replace('/login');
     }
@@ -31,22 +39,31 @@ export default function BookingPage() {
   if (!isAuthenticated) return null;
 
   const services = [
-    { id: 'house', name: 'House Cleaning', icon: '🏠', price: '$120' },
-    { id: 'office', name: 'Office Cleaning', icon: '🏢', price: '$200' },
-    { id: 'deep', name: 'Deep Cleaning', icon: '✨', price: '$250' },
-    { id: 'move', name: 'Move In/Out Cleaning', icon: '📦', price: '$300' }
+    { id: 'Deep Cleaning', name: 'Deep Cleaning', icon: '✨' },
+    { id: 'Regular Cleaning', name: 'Regular Cleaning', icon: '🏠' },
+    { id: 'Move In/Out Cleaning', name: 'Move In/Out Cleaning', icon: '📦' },
+    { id: 'Office Cleaning', name: 'Office Cleaning', icon: '🏢' }
   ];
 
   const timeSlots = [
-    '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM',
-    '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM',
-    '4:00 PM', '5:00 PM', '6:00 PM'
+    '08:00:00', '09:00:00', '10:00:00', '11:00:00',
+    '12:00:00', '13:00:00', '14:00:00', '15:00:00',
+    '16:00:00', '17:00:00', '18:00:00'
   ];
+
+  const formatTimeForDisplay = (time) => {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
 
   const handleSignOut = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('isAuthenticated');
-      setIsSidebarOpen(false);
+      localStorage.removeItem('userId');
+      localStorage.removeItem('userEmail');
       router.push('/login');
     }
   };
@@ -122,27 +139,69 @@ export default function BookingPage() {
       return;
     }
 
+    if (!userId) {
+      alert('User session expired. Please login again.');
+      router.push('/login');
+      return;
+    }
+
     setIsSubmitting(true);
     
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const bookingNotes = `Address: ${address}\nNotes: ${
+        notes || "None"
+      }\nDocuments: ${
+        documents.length > 0 ? documents.map((d) => d.name).join(", ") : "None"
+      }`;
+      const formData = new FormData();
+      formData.append("user_id", String(userId));
+      formData.append("service", selectedService);
+      formData.append("date", selectedDate);
+      formData.append("time", selectedTime);
+      formData.append("additional_notes", bookingNotes);
+      documents.forEach((file) => formData.append("documents", file));
+
+      const result = await createBooking(formData);
+
+      if (result?.success) {
+        alert('Booking created successfully!');
+
+        // Reset form
+        setSelectedService('');
+        setSelectedDate('');
+        setSelectedTime('');
+        setAddress('');
+        setNotes('');
+        setDocuments([]);
+        
+      } else {
+        throw new Error(result?.message || 'Failed to create booking');
+      }
+    } catch (error) {
+      console.error('Booking error:', error);
+      alert('Error creating booking: ' + (error?.message || 'Server error'));
+    } finally {
       setIsSubmitting(false);
-      alert('Booking submitted successfully!');
-      // Reset form
-      setSelectedService('');
-      setSelectedDate('');
-      setSelectedTime('');
-      setAddress('');
-      setNotes('');
-      setDocuments([]);
-    }, 1500);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 relative">
+      {/* User Info Bar */}
+      {userEmail && (
+        <div className="ml-60 p-4 bg-blue-50 border-b border-blue-200">
+          <div className="max-w-4xl flex justify-between items-center">
+            <span className="text-sm text-blue-700">
+              Logged in as: <strong>{userEmail}</strong>
+            </span>
+            <span className="text-xs text-blue-600">
+              User ID: {userId}
+            </span>
+          </div>
+        </div>
+      )}
 
       <aside className="fixed top-0 left-0 h-full w-60 bg-gradient-to-b from-white to-gray-50 shadow-2xl z-50 flex flex-col">
-
         {/* Sidebar Header */}
         <div className="px-6 py-6 flex items-center gap-3 border-b border-gray-200 bg-white">
           <Image src="/images/logo.png" alt="logo" width={48} height={48} className="object-contain" />
@@ -194,8 +253,7 @@ export default function BookingPage() {
 
       {/* Main content area */}
       <div className="min-h-screen">
-
-        <main className="max-w-4xl px-4 py-8 ml-100">
+        <main className="max-w-4xl px-4 py-8 ml-60">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Book a Cleaning Service</h1>
             <p className="text-gray-600">Schedule your cleaning service at your convenience</p>
@@ -231,7 +289,6 @@ export default function BookingPage() {
                         <span className="text-2xl">{service.icon}</span>
                         <div>
                           <div className="font-semibold text-gray-900">{service.name}</div>
-                          <div className="text-sm text-blue-600 font-medium">{service.price}</div>
                         </div>
                       </div>
                       {selectedService === service.id && (
@@ -296,7 +353,7 @@ export default function BookingPage() {
                         : 'border-gray-200 hover:border-blue-300 text-gray-700'
                     }`}
                   >
-                    {time}
+                    {formatTimeForDisplay(time)}
                   </button>
                 ))}
               </div>
@@ -417,4 +474,3 @@ export default function BookingPage() {
     </div>
   );
 }
-
